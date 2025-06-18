@@ -1,84 +1,105 @@
-/*
- * Copyright (c) 2023 OpenLuat & AirM2M
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy of
- * this software and associated documentation files (the "Software"), to deal in
- * the Software without restriction, including without limitation the rights to
- * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
- * the Software, and to permit persons to whom the Software is furnished to do so,
- * subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
- * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
- * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
- * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- */
-
-
+#include "bsp_common.h"
 #include "common_api.h"
-#include "luat_rtos.h"
-#include "luat_mem.h"
-#include "luat_debug.h"
+#include "soc_service.h"
 #include "FreeRTOS.h"
 #include "task.h"
 
-luat_rtos_task_handle task1_handle;
-luat_rtos_task_handle task2_handle;
+#include <math.h>
+
+void* task1_handle;
+void* task2_handle;
+
+// #define soc_printf(...)
 
 static void hw_demoA_init(void)
 {
-	LUAT_DEBUG_PRINT("this hw demo1");
+    soc_printf("this hw demo1");
 }
 
 static void hw_demoB_init(void)
 {
-	LUAT_DEBUG_PRINT("this hw demo2");
+    soc_printf("this hw demo2");
 }
 
 static void dr_demoC_init(void)
 {
-	LUAT_DEBUG_PRINT("this dr demo1");
+    soc_printf("this dr demo1");
 }
 
 static void dr_demoD_init(void)
 {
-	LUAT_DEBUG_PRINT("this dr demo2");
+    soc_printf("this dr demo2");
 }
 
 static void task1(void *param)
 {
-	while(1)
-	{
-		luat_rtos_task_sleep(1000);
-		LUAT_DEBUG_PRINT("task1 loop");
-	}
+    while(1)
+    {
+        vTaskDelay(1000);
+        soc_printf("task1 loop");
+    }
 }
+
+#ifdef STATIC_RECORDS
+static TaskRunTimeRecord_t record[TASK_RECORD_MAX];
+#endif
 
 static void task2(void *param)
 {
-	while(1)
-	{
-		luat_rtos_task_sleep(1000);
-		luat_rtos_task_run_time_record_print(0);
-		// 去掉下面的注释, 可以关闭日志打印
-		// luat_debug_print_onoff(0);
-	}
+    StaticTask_t *handle;
+    uint32_t per;
+
+    while(1)
+    {
+        // 间隔 1s 打印 CPU 占用率
+        vTaskDelay(1000);
+        uint64_t now_time = soc_get_poweron_time_tick();
+        #ifndef STATIC_RECORDS
+        TaskRunTimeRecord_t *record = malloc(sizeof(TaskRunTimeRecord_t) * TASK_RECORD_MAX);
+        #endif
+        if(record)
+        {
+            vTaskSuspendAll();
+            if(soc_task_record_get(record, TASK_RECORD_MAX))
+            {
+                xTaskResumeAll();
+                for(int i = 0; i < TASK_RECORD_MAX; i++)
+                {
+                    if(record[i].tcb)
+                    {
+                        handle = (StaticTask_t *)record[i].tcb;
+                        per = record[i].RunTime * 1000 / now_time;
+                        if(0)
+                        {
+                            soc_printf("task %s \t ticks %llu \t cpu time percent %u‰", handle->ucDummy7, record[i].RunTime, per);
+                        }
+                        else
+                        {
+                            soc_printf("task %s \t cpu time percent %u‰", handle->ucDummy7, per, atan(2));
+                        }
+                    }
+                }
+            }
+            else
+            {
+                xTaskResumeAll();
+            }
+            #ifndef STATIC_RECORDS
+            free(record);
+            #endif
+        }
+    }
 }
 
 static void task_demoE_init(void)
 {
-	luat_rtos_task_create(&task1_handle, 2*1024, 50, "task1", task1, NULL, 0);
+    task1_handle = create_event_task(task1, NULL, 2 * 1024, 50, 0, "task1");
 }
 
 static void task_demoF_init(void)
 {
-	luat_rtos_task_run_time_record_enable();
-	luat_rtos_task_create(&task2_handle, 2*1024, 50, "task2", task2, NULL, 0);
+    soc_task_record_on_off(1);
+    task2_handle = create_event_task(task2, NULL, 2 * 1024, 50, 0, "task2");
 }
 
 //启动hw_demoA_init，启动位置硬件初始1级
@@ -93,4 +114,3 @@ INIT_DRV_EXPORT(dr_demoD_init, "2");
 INIT_TASK_EXPORT(task_demoE_init, "1");
 //启动task_demoF_init，启动位置任务2级
 INIT_TASK_EXPORT(task_demoF_init, "2");
-
