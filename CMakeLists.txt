@@ -11,23 +11,16 @@ SET(CMAKE_C_COMPILER_FORCED   1)
 SET(CMAKE_ASM_COMPILER_FORCED 1)
 SET(CMAKE_CXX_COMPILER_FORCED 1)
 
-#[[
-ec718hm
-CHIP_EC718
-TYPE_EC718M
-TYPE_EC718HM
-]]
-
-SET(TARGET_CHIP "ec718hm")
+# SET(SOC "ec718hm")
 
 SET(LIB_FW "oc")
 SET(LIB_PS_PLAT "full")
 
 SET(SOC "$ENV{SOC}")
-string(TOUPPER IS_${SOC} IS_SOC)
+string(TOUPPER ${SOC} SOC_U)
 
 message("SOC: ${SOC}")
-message("IS_SOC: ${IS_SOC}")
+message("SOC_U: ${SOC_U}")
 
 SET(TC_VERSION "10-2020")
 SET(TC_HOST "arm-none-eabi")
@@ -71,15 +64,16 @@ SET(CMAKE_ASM_FLAGS "")
 
 SET(OBJCOPY_CMD ${TC_PFX}objcopy)
 SET(OBJDUMP_CMD ${TC_PFX}objdump)
+SET(OBJSIZE_CMD ${TC_PFX}size)
 
 set(out_dir ${CMAKE_CURRENT_BINARY_DIR})
 
 SET(LINKER_FLAGS
   -Wl,-Map=<TARGET>.map
-  -L ${out_dir} -T ${out_dir}/${TARGET_CHIP}_script.ld
-  -L ${CMAKE_CURRENT_SOURCE_DIR}/PLAT/libs/${TARGET_CHIP}
-  -L ${CMAKE_CURRENT_SOURCE_DIR}/PLAT/prebuild/PS/lib/gcc/${TARGET_CHIP}/${LIB_PS_PLAT}
-  -L ${CMAKE_CURRENT_SOURCE_DIR}/PLAT/prebuild/PLAT/lib/gcc/${TARGET_CHIP}/${LIB_PS_PLAT}
+  -L ${out_dir} -T ${out_dir}/${SOC}_script.ld
+  # -L ${CMAKE_CURRENT_SOURCE_DIR}/PLAT/libs/${SOC}
+  # -L ${CMAKE_CURRENT_SOURCE_DIR}/PLAT/prebuild/PS/lib/gcc/${SOC}/${LIB_PS_PLAT}
+  # -L ${CMAKE_CURRENT_SOURCE_DIR}/PLAT/prebuild/PLAT/lib/gcc/${SOC}/${LIB_PS_PLAT}
 
   -mcpu=cortex-m3
   -mthumb
@@ -130,18 +124,31 @@ project(
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_compile_options(
-  -g3
+  # -g3
+  # -Os
+  # -mcpu=cortex-m3
+  # -mthumb
+  # -nostartfiles
+  # -mapcs-frame
+  # -ffunction-sections
+  # -fdata-sections
+  # -fno-isolate-erroneous-paths-dereference
+  # -freorder-blocks-algorithm=stc
+
+  # -mslow-flash-data
+  # -flto -fuse-linker-plugin -ffat-lto-objects -flto-partition=none -Wno-lto-type-mismatch
+
   -mcpu=cortex-m3
   -mthumb
-  -nostartfiles
   -mapcs-frame
+  -mslow-flash-data
+  -mfloat-abi=soft
+  -march=armv7-m
+  -g -g3 -Os
   -ffunction-sections
   -fdata-sections
   -fno-isolate-erroneous-paths-dereference
   -freorder-blocks-algorithm=stc
-
-  -fno-strict-aliasing
-  -mslow-flash-data
 )
 
 file(GLOB_RECURSE sdk_src CONFIGURE_DEPENDS
@@ -180,6 +187,22 @@ file(GLOB_RECURSE sdk_src CONFIGURE_DEPENDS
   PLAT/os/freertos/portable/mem/tlsf/tlsf.c
   PLAT/os/freertos/CMSIS/*.c
 
+  # PLAT/os/freertos/src/event_groups.c
+  # # PLAT/os/freertos/src/heap_4.c
+  # PLAT/os/freertos/src/heap_6.c
+  # # PLAT/os/freertos/src/heap_6_cust.c
+  # # PLAT/os/freertos/src/heap_6_psram.c
+  # PLAT/os/freertos/src/list.c
+  # PLAT/os/freertos/src/queue.c
+  # PLAT/os/freertos/src/tasks.c
+  # PLAT/os/freertos/src/timers.c
+  # PLAT/os/freertos/portable/gcc/port.c
+  # PLAT/os/freertos/portable/mem/tlsf/tlsf.c
+  # PLAT/os/freertos/CMSIS/ap/src/cmsis_os2.c
+  # PLAT/os/freertos/CMSIS/ap/src/os_callback_hook.c
+  # PLAT/os/freertos/CMSIS/ap/src/os_systick.c
+  # PLAT/os/freertos/CMSIS/common/src/mm_debug.c
+
   thirdparty/littlefs/*.c
   thirdparty/printf/*.c
 )
@@ -187,7 +210,7 @@ file(GLOB_RECURSE sdk_src CONFIGURE_DEPENDS
 add_library(sdk_lib ${sdk_src})
 
 target_include_directories(sdk_lib PUBLIC
-  PLAT/tools/${TARGET_CHIP}
+  PLAT/tools/${SOC}
 
   thirdparty/littlefs
   thirdparty/littlefs/port
@@ -296,6 +319,7 @@ target_compile_definitions(sdk_lib PUBLIC
   PSRAM_FEATURE_ENABLE
   FEATURE_EXCEPTION_FLASH_DUMP_ENABLE
 
+  LWIP_NUM_SOCKETS=16
 
   EC_ASSERT_FLAG
   PM_FEATURE_ENABLE
@@ -341,17 +365,34 @@ target_compile_definitions(sdk_lib PUBLIC
   # vsnprintf=vsnprintf_
 )
 
+SET(FCELF "fcelf.exe")
+SET(CP_PKG_IMG "PLAT/prebuild/FW/lib/gcc/${SOC}/${LIB_FW}/cp-demo-flash.bin")
+SET(APP_SECT_INFO "PLAT/device/target/board/ec7xx_0h00/ap/gcc/sectionInfo_${SOC}.json")
+SET(BTL_SECT_INFO "PLAT/project/ec7xx_0h00/ap/apps/bootloader/GCC/sectionInfo_${SOC}.json")
+
 ADD_CUSTOM_COMMAND(
   TARGET sdk_lib
   PRE_BUILD
   COMMAND ${CMAKE_C_COMPILER}
-    -DCHIP_EC718
-    -DTYPE_EC718M
-    -DTYPE_EC718HM
-    -E -P -x c ${CMAKE_CURRENT_SOURCE_DIR}/PLAT/core/ld/ec7xxxm_0h00_flash.c
-    -I ${CMAKE_CURRENT_SOURCE_DIR}/PLAT/device/target/board/ec7xx_0h00/common/inc
-    -I ${CMAKE_CURRENT_SOURCE_DIR}/PLAT/device/target/board/ec7xx_0h00/common/pkginc
-    -o ${out_dir}/${TARGET_CHIP}_script.ld
+    -DTYPE_${SOC_U}
+    # -DPSRAM_FEATURE_ENABLE
+    # -DFEATURE_IMS_ENABLE
+    -DFEATURE_FREERTOS_ENABLE
+    -E -P -x c PLAT/core/ld/ec7xxxm_0h00_flash.c
+    -I PLAT/device/target/board/ec7xx_0h00/common/inc
+    -I PLAT/device/target/board/ec7xx_0h00/common/pkginc
+    -o ${SOC}_script.ld
+
+  COMMAND ${CMAKE_C_COMPILER}
+    -DTYPE_${SOC_U}
+    # -DFEATURE_IMS_ENABLE
+    -DFEATURE_FREERTOS_ENABLE
+    -E -dM PLAT/device/target/board/ec7xx_0h00/common/inc/mem_map.h
+    -I PLAT/device/target/board/ec7xx_0h00/common/pkginc
+    -o app_mem_map.txt
+
+
+  DEPENDS PLAT/core/ld/ec7xxxm_0h00_flash.c
 )
 
 add_executable(app
@@ -359,42 +400,103 @@ add_executable(app
 )
 
 ADD_CUSTOM_COMMAND(
-    TARGET app
-    POST_BUILD
-    COMMAND ${OBJCOPY_CMD} -O binary $<TARGET_FILE:app> app.bin
-  )
+  TARGET app
+  POST_BUILD
+  COMMAND ${OBJCOPY_CMD} -O binary $<TARGET_FILE:app> tmp_app.bin
+
+  COMMAND echo "echo Generating binpkg..." > mk_binpkg.bat
+  # COMMAND echo ${FCELF} -C tmp_btl.bin -cfg ${BTL_SECT_INFO} -map btl.elf.map -out ./btl.bin >> mk_binpkg.bat
+  COMMAND echo copy app_mem_map.txt mem_map.txt >> mk_binpkg.bat
+  COMMAND echo ${FCELF} -C -bin ./tmp_app.bin -cfg ${APP_SECT_INFO} -map ./app.elf.map -out ./app.bin >> mk_binpkg.bat
+  COMMAND echo ${FCELF} -M
+    # -input btl.bin -addrname BL_PKGIMG_LNA -flashsize BOOTLOADER_PKGIMG_LIMIT_SIZE
+    -input app.bin -addrname AP_PKGIMG_LNA -flashsize AP_PKGIMG_LIMIT_SIZE
+    -input ${CP_PKG_IMG} -addrname CP_PKGIMG_LNA -flashsize CP_PKGIMG_LIMIT_SIZE
+    -pkgmode 1 -banoldtool 1 -productname ${SOC_U}_PRD -def app_mem_map.txt -outfile core.binpkg >> mk_binpkg.bat
+)
 
 target_compile_definitions(app PRIVATE
   # STATIC_RECORDS
 )
 
+set(PLAT_sdk_libs
+  libcore_airm2m.a
+  liblwip.a
+  liblzma.a
+  libmiddleware_ec.a
+  libpsnv.a
+  libstartup.a
+  libtcpipmgr.a
+)
+
+set(PLAT_sdk_prebuild_PS_libs
+  libps.a
+  libpsl1.a
+  libpsif.a
+)
+
+set(PLAT_sdk_prebuild_PLAT_libs
+  libosa.a
+  libccio.a
+  libdeltapatch.a
+  libmiddleware_ec_private.a
+  libdriver_private.a
+  libusb_private.a
+  libfota.a
+)
+
+list(TRANSFORM PLAT_sdk_libs PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/PLAT/libs/${SOC}/")
+list(TRANSFORM PLAT_sdk_prebuild_PS_libs PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/PLAT/prebuild/PS/lib/gcc/${SOC}/${LIB_PS_PLAT}/")
+list(TRANSFORM PLAT_sdk_prebuild_PLAT_libs PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/PLAT/prebuild/PLAT/lib/gcc/${SOC}/${LIB_PS_PLAT}/")
+
 file(GLOB prebuilt_libs
-  PLAT/libs/${TARGET_CHIP}/*.a
-  PLAT/prebuild/PS/lib/gcc/${TARGET_CHIP}/${LIB_PS_PLAT}/*.a
-  PLAT/prebuild/PLAT/lib/gcc/${TARGET_CHIP}/${LIB_PS_PLAT}/*.a
+  PLAT/libs/${SOC}/*.a
+  PLAT/prebuild/PS/lib/gcc/${SOC}/${LIB_PS_PLAT}/*.a
+  PLAT/prebuild/PLAT/lib/gcc/${SOC}/${LIB_PS_PLAT}/*.a
 )
 
 target_link_libraries(app
   sdk_lib
   # ${prebuilt_libs}
 
-  -lps
-  -lpsl1
-  -lpsif
+  ${PLAT_sdk_libs}
+  ${PLAT_sdk_prebuild_PS_libs}
+  ${PLAT_sdk_prebuild_PLAT_libs}
 
-  -lcore_airm2m
-  -llwip
-  -llzma
-  -lmiddleware_ec
-  -lpsnv
-  -lstartup
-  -ltcpipmgr
+  # -lps
+  # -lpsl1
+  # -lpsif
 
-  -losa
-  -lccio
-  -ldeltapatch
-  -lmiddleware_ec_private
-  -ldriver_private
-  -lusb_private
-  -lfota
+  # -lcore_airm2m
+  # -llwip
+  # -llzma
+  # -lmiddleware_ec
+  # -lpsnv
+  # -lstartup
+  # -ltcpipmgr
+
+  # -losa
+  # -lccio
+  # -ldeltapatch
+  # -lmiddleware_ec_private
+  # -ldriver_private
+  # -lusb_private
+  # -lfota
 )
+
+set(all_app_libs
+  ${out_dir}/libsdk_lib.a
+  ${PLAT_sdk_libs}
+  ${PLAT_sdk_prebuild_PS_libs}
+  ${PLAT_sdk_prebuild_PLAT_libs}
+)
+
+message("all_app_libs ${all_app_libs}")
+
+ADD_CUSTOM_COMMAND(TARGET app POST_BUILD
+  COMMAND ${OBJDUMP_CMD} -h app.elf > app.size
+  COMMAND ${OBJSIZE_CMD} -G app.elf >> app.size
+)
+# foreach(lib IN LISTS all_app_libs)
+#   ADD_CUSTOM_COMMAND(TARGET app POST_BUILD COMMAND ${OBJSIZE_CMD} -G ${lib} >> app.size)
+# endforeach()
