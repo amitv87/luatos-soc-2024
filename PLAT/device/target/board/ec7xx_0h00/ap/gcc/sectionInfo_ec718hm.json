@@ -81,11 +81,6 @@
           "isCompressed":true
         },
         {
-          "secname":"load_ap_fpsram_p1_data",
-          "sectype":"SECTIONAP_LOAD_AP_FPSRAMP1_DATA",
-          "isCompressed":false
-        },
-        {
           "secname":"load_ap_ppsram_p0_bsp_data",
           "sectype":"SECTIONAP_LOAD_PPSRAM_P0_BSP_DATA",
           "isCompressed":false

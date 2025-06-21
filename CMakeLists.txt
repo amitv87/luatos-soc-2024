@@ -70,15 +70,14 @@ set(out_dir ${CMAKE_CURRENT_BINARY_DIR})
 
 SET(LINKER_FLAGS
   -Wl,-Map=<TARGET>.map
-  -L ${out_dir} -T ${out_dir}/${SOC}_script.ld
+  -L ${out_dir}
   # -L ${CMAKE_CURRENT_SOURCE_DIR}/PLAT/libs/${SOC}
   # -L ${CMAKE_CURRENT_SOURCE_DIR}/PLAT/prebuild/PS/lib/gcc/${SOC}/${LIB_PS_PLAT}
   # -L ${CMAKE_CURRENT_SOURCE_DIR}/PLAT/prebuild/PLAT/lib/gcc/${SOC}/${LIB_PS_PLAT}
 
   -mcpu=cortex-m3
   -mthumb
-  --specs=nano.specs
-  # --specs=nosys.specs
+  --specs=nosys.specs
 
   # -lc
   # -lc_nano
@@ -93,6 +92,8 @@ SET(LINKER_FLAGS
   <OBJECTS>
   -Wl,--end-group
   -Wl,--no-whole-archive
+
+  --specs=nano.specs
 
   -Wl,--cref
   -Wl,--check-sections
@@ -111,7 +112,7 @@ SET(LINKER_FLAGS
 )
 string(REPLACE ";" " " LINKER_FLAGS "${LINKER_FLAGS}")
 
-SET(CMAKE_C_LINK_EXECUTABLE "<CMAKE_C_COMPILER> ${LINKER_FLAGS} -o <TARGET>")
+SET(CMAKE_C_LINK_EXECUTABLE "<CMAKE_C_COMPILER> <LINK_FLAGS> ${LINKER_FLAGS} -o <TARGET>")
 
 SET(CMAKE_CXX_LINK_EXECUTABLE "${CMAKE_C_LINK_EXECUTABLE}")
 
@@ -296,7 +297,7 @@ target_include_directories(sdk_lib PUBLIC
   PLAT/driver/board/ec7xx_0h00/inc/audio/storge/flashex/lfsex
 )
 
-target_compile_definitions(sdk_lib PUBLIC
+add_compile_definitions(
   CHIP_EC718
   TYPE_EC718M
   TYPE_EC718HM
@@ -315,7 +316,9 @@ target_compile_definitions(sdk_lib PUBLIC
   FEATURE_FOTAPAR_ENABLE
   __ASSEMBLY__
   __CURRENT_FILE_NAME__=__FILE__
+)
 
+target_compile_definitions(sdk_lib PUBLIC
   PSRAM_FEATURE_ENABLE
   FEATURE_EXCEPTION_FLASH_DUMP_ENABLE
 
@@ -374,18 +377,17 @@ ADD_CUSTOM_COMMAND(
   TARGET sdk_lib
   PRE_BUILD
   COMMAND ${CMAKE_C_COMPILER}
+    -DTYPE_EC718M
     -DTYPE_${SOC_U}
-    # -DPSRAM_FEATURE_ENABLE
-    # -DFEATURE_IMS_ENABLE
     -DFEATURE_FREERTOS_ENABLE
     -E -P -x c PLAT/core/ld/ec7xxxm_0h00_flash.c
     -I PLAT/device/target/board/ec7xx_0h00/common/inc
     -I PLAT/device/target/board/ec7xx_0h00/common/pkginc
-    -o ${SOC}_script.ld
+    -o sdk_script.ld
 
   COMMAND ${CMAKE_C_COMPILER}
+    -DTYPE_EC718M
     -DTYPE_${SOC_U}
-    # -DFEATURE_IMS_ENABLE
     -DFEATURE_FREERTOS_ENABLE
     -E -dM PLAT/device/target/board/ec7xx_0h00/common/inc/mem_map.h
     -I PLAT/device/target/board/ec7xx_0h00/common/pkginc
@@ -393,6 +395,129 @@ ADD_CUSTOM_COMMAND(
 
 
   DEPENDS PLAT/core/ld/ec7xxxm_0h00_flash.c
+)
+
+file(GLOB_RECURSE btl_src CONFIGURE_DEPENDS
+  PLAT/core/code/boot_code.c
+  PLAT/core/code/fota_code.c
+  PLAT/driver/board/ec7xx_0h00/src/plat_config.c
+  PLAT/driver/hal/ec7xx/ap/src/hal_pwrkey.c
+  PLAT/driver/hal/ec7xx/ap/src/hal_misc.c
+  PLAT/driver/hal/common/src/ec_string.c
+  PLAT/driver/chip/ec7xx/ap/src/clock.c
+  PLAT/driver/chip/ec7xx/ap/src/gpio.c
+  PLAT/driver/chip/ec7xx/ap/src/oneWire.c
+  PLAT/driver/chip/ec7xx/ap/src/pad.c
+  PLAT/driver/chip/ec7xx/ap/src/wdt.c
+  PLAT/driver/chip/ec7xx/ap/src/usb_bl/open/*.c
+  PLAT/driver/chip/ec7xx/ap/src/usb_bl/usb_device/*.c
+  PLAT/driver/chip/ec7xx/common/gcc/memcpy-armv7m.S
+  bootloader/*.c
+)
+
+add_executable(btl ${btl_src})
+
+target_link_options(btl PUBLIC
+  -Tbtl_script.ld
+  -L${CMAKE_CURRENT_SOURCE_DIR}/lib
+  -L${CMAKE_CURRENT_SOURCE_DIR}/PLAT/libs/${SOC}/bootloader
+  -L${CMAKE_CURRENT_SOURCE_DIR}/PLAT/prebuild/PLAT/lib/gcc/${SOC}/${LIB_PS_PLAT}
+)
+
+target_link_libraries(btl PUBLIC
+  -lstartup
+  -lcore_airm2m
+  -llzma
+  -lmiddleware_ec
+  
+  -ldriver_private_bl
+  -lbootloader
+  -lusbbl_priv
+  -losa
+  
+  -lmiddleware_ec_private
+  -lccio
+  -lfota
+  -ldeltapatch2
+  -lffota_eflash 
+)
+
+ADD_CUSTOM_COMMAND(
+  TARGET btl
+  PRE_BUILD
+  COMMAND ${CMAKE_C_COMPILER}
+    -DTYPE_EC718M
+    -DTYPE_${SOC_U}
+    -E -P -x c PLAT/core/ld/ec718xm/ec7xx_0h00_flash_bl.c
+    -I PLAT/device/target/board/ec7xx_0h00/common/inc
+    -I PLAT/device/target/board/ec7xx_0h00/common/pkginc
+    -I PLAT/project/ec7xx_0h00/ap/apps/bootloader/code/include
+    -o btl_script.ld
+
+  COMMAND ${CMAKE_C_COMPILER}
+    -DTYPE_EC718M
+    -DTYPE_${SOC_U}
+    -E -dM PLAT/device/target/board/ec7xx_0h00/common/inc/mem_map.h
+    -I PLAT/device/target/board/ec7xx_0h00/common/pkginc
+    -o btl_mem_map.txt
+)
+
+ADD_CUSTOM_COMMAND(
+  TARGET btl
+  POST_BUILD
+  COMMAND ${OBJCOPY_CMD} -O binary $<TARGET_FILE:btl> tmp_btl.bin
+)
+
+target_include_directories(btl PRIVATE
+  PLAT/middleware/developed/nvram/inc
+  /Volumes/boggy/repos/luatos-soc-2024/PLAT/middleware/developed/fota/pub
+  /Volumes/boggy/repos/luatos-soc-2024/PLAT/middleware/developed/fota/custom/inc
+
+  PLAT/prebuild/PLAT/inc/usb_bl
+  PLAT/driver/chip/ec7xx/ap/inc
+  PLAT/middleware/developed/debug/inc
+  PLAT/project/ec7xx_0h00/ap/apps/bootloader/code/include
+  PLAT/project/ec7xx_0h00/ap/apps/bootloader/code/include/common
+  PLAT/project/ec7xx_0h00/ap/apps/bootloader/code/common/secure/hash/inc
+  PLAT/middleware/thirdparty/lzma2201/C
+  PLAT/middleware/thirdparty/lzma2201/C/wrapper
+
+  PLAT/device/target/board/common/ARMCM3/inc
+  PLAT/device/target/board/ec7xx_0h00/ap/inc
+  /Volumes/boggy/repos/luatos-soc-2024/PLAT/driver/chip/ec7xx/ap/inc_cmsis
+  /Volumes/boggy/repos/luatos-soc-2024/PLAT/prebuild/PLAT/inc
+  /Volumes/boggy/repos/luatos-soc-2024/PLAT/device/target/board/ec7xx_0h00/common/inc
+  /Volumes/boggy/repos/luatos-soc-2024/PLAT/device/target/board/ec7xx_0h00/common/pkginc
+  /Volumes/boggy/repos/luatos-soc-2024/PLAT/driver/board/ec7xx_0h00/inc
+  /Volumes/boggy/repos/luatos-soc-2024/PLAT/driver/hal/common/inc
+  /Volumes/boggy/repos/luatos-soc-2024/PLAT/device/target/board/ec7xx_0h00/ap/gcc
+  /Volumes/boggy/repos/luatos-soc-2024/PLAT/driver/hal/ec7xx/ap/inc
+  /Volumes/boggy/repos/luatos-soc-2024/PLAT/os/freertos/CMSIS/ap/inc
+)
+
+# target_compile_options(btl PRIVATE
+#   -flto
+#   -fuse-linker-plugin
+#   -ffat-lto-objects
+#   -flto-partition=none
+#   -Wno-lto-type-mismatch
+# )
+
+target_compile_definitions(btl PRIVATE
+  # LTO_FEATURE_MODE
+  DHCPD_ENABLE_DEFINE=0
+  FEATURE_FOTA_ENABLE
+  MIDDLEWARE_FOTA_ENABLE
+  FEATURE_FOTA_CORE2_ENABLE
+  USBC_USBMST_MGR_FEATURE_DISABLE=1
+  USB_DRV_SMALL_IMAGE=1
+  FEATURE_BOOTLOADER_PROJECT_ENABLE
+  __BL_MODE__
+  __USER_CODE__
+  FEATURE_FOTA_HLS_ENABLE
+  FEATURE_FOTA_USBURC_ENABLE
+  FOTA_PRESET_RAM_ENABLE=1
+  DEBUG_LOG_HEADER_FILE=\"debug_log_dummy.h\"
 )
 
 add_executable(app
@@ -403,13 +528,15 @@ ADD_CUSTOM_COMMAND(
   TARGET app
   POST_BUILD
   COMMAND ${OBJCOPY_CMD} -O binary $<TARGET_FILE:app> tmp_app.bin
+  DEPENDS btl
 
   COMMAND echo "echo Generating binpkg..." > mk_binpkg.bat
-  # COMMAND echo ${FCELF} -C tmp_btl.bin -cfg ${BTL_SECT_INFO} -map btl.elf.map -out ./btl.bin >> mk_binpkg.bat
+  COMMAND echo copy btl_mem_map.txt mem_map.txt >> mk_binpkg.bat
+  COMMAND echo ${FCELF} -C -bin tmp_btl.bin -cfg ${BTL_SECT_INFO} -map btl.elf.map -out ./btl.bin >> mk_binpkg.bat
   COMMAND echo copy app_mem_map.txt mem_map.txt >> mk_binpkg.bat
-  COMMAND echo ${FCELF} -C -bin ./tmp_app.bin -cfg ${APP_SECT_INFO} -map ./app.elf.map -out ./app.bin >> mk_binpkg.bat
+  COMMAND echo ${FCELF} -C -bin tmp_app.bin -cfg ${APP_SECT_INFO} -map app.elf.map -out ./app.bin >> mk_binpkg.bat
   COMMAND echo ${FCELF} -M
-    # -input btl.bin -addrname BL_PKGIMG_LNA -flashsize BOOTLOADER_PKGIMG_LIMIT_SIZE
+    -input btl.bin -addrname BL_PKGIMG_LNA -flashsize BOOTLOADER_PKGIMG_LIMIT_SIZE
     -input app.bin -addrname AP_PKGIMG_LNA -flashsize AP_PKGIMG_LIMIT_SIZE
     -input ${CP_PKG_IMG} -addrname CP_PKGIMG_LNA -flashsize CP_PKGIMG_LIMIT_SIZE
     -pkgmode 1 -banoldtool 1 -productname ${SOC_U}_PRD -def app_mem_map.txt -outfile core.binpkg >> mk_binpkg.bat
@@ -455,6 +582,8 @@ file(GLOB prebuilt_libs
   PLAT/prebuild/PLAT/lib/gcc/${SOC}/${LIB_PS_PLAT}/*.a
 )
 
+target_link_options(app PUBLIC -T sdk_script.ld)
+
 target_link_libraries(app
   sdk_lib
   # ${prebuilt_libs}
@@ -491,7 +620,10 @@ set(all_app_libs
   ${PLAT_sdk_prebuild_PLAT_libs}
 )
 
-message("all_app_libs ${all_app_libs}")
+ADD_CUSTOM_COMMAND(TARGET btl POST_BUILD
+  COMMAND ${OBJDUMP_CMD} -h btl.elf > btl.size
+  COMMAND ${OBJSIZE_CMD} -G btl.elf >> btl.size
+)
 
 ADD_CUSTOM_COMMAND(TARGET app POST_BUILD
   COMMAND ${OBJDUMP_CMD} -h app.elf > app.size

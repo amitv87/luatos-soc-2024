@@ -20,7 +20,7 @@
 #endif
 #else
 #ifndef AP_PKGIMG_LIMIT_SIZE
-#define AP_PKGIMG_LIMIT_SIZE (0x5BD000)
+#define AP_PKGIMG_LIMIT_SIZE (0x146d00)
 #endif
 #endif // (FEATURE_AMR_CP_ENABLE) || defined (FEATURE_VEM_CP_ENABLE)
 

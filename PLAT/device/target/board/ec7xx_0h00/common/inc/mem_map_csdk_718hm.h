@@ -80,7 +80,7 @@ flash xip address(from both ap/cp view): 0x00800000---0x01000000
 	#endif
 	#else
 	#ifndef AP_FLASH_LOAD_SIZE
-	#define AP_FLASH_LOAD_SIZE              (0x5BD000)
+	#define AP_FLASH_LOAD_SIZE              (0x146d00)
 	#endif
 	#endif
 	#ifndef FULL_OTA_SAVE_ADDR
